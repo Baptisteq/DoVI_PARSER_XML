@@ -17,7 +17,7 @@ parseXML()
 
 REVISIONCOUNT=$(parseXML "count(/DolbyLabsMDF/RevisionHistory/Revision)")
 echo "$REVISIONCOUNT"
-exit 0
+
 
 #---- is this a revised version ? (number of <revision> node. if 1 it is the fisrt version ever generated
 REVISIONCOUNT=$(echo "$XML" | xmllint --xpath "count(/DolbyLabsMDF/RevisionHistory/Revision)" $INPUTXML)
