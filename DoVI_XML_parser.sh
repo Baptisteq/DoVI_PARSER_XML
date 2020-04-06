@@ -14,13 +14,24 @@ parseXML()
   echo "$XML" | xmllint --xpath "$XPATH" -
 }
 
-# trimTags()
-# {
-  # sed 's/<.*>\(.*\)<\/.*>/\1/' "$1"
-# }
+function populateDoVIMetaList()
+{
+local INDEX=$1
+local SHOTN=INDEX+1
+if [[ "$INDEX" == "init" ]]; then
+  CSVARRAY[0]=$(echo "Shot#;FrameIn;FrameOut;Duration;L1 Status;minPQ;avgPQ;maxPQ;L2 Status;L1 min offset;L1 avg offset;L1 max offset;Lift;Gain;Gamma;Saturation;Chrome;Tone Detail")
+else
+  CSVARRAY[((${FRAMEINS[$INDEX]}+1))]=$(echo "$INDEX;${FRAMEINS[$INDEX]};${FRAMEOUTS[$INDEX]};${FRAMEDURATIONS[$INDEX]};${L1Status[$INDEX]};${MINPQ[$INDEX]};${AVGPQ[$INDEX]};${MAXPQ[$INDEX]};${LE2TID1Status[$INDEX]};${L2TIDl1minoffset[$INDEX]};${L2TIDl1avgoffset[$INDEX]};${L2TIDl1maxoffset[$INDEX]};${L2TIDlift[$INDEX]};${L2TIDgain[$INDEX]};${L2TIDgamma[$INDEX]};${L2TIDsaturation[$INDEX]};${L2TIDchroma[$INDEX]};${L2TIDToneDetail[$INDEX]}")
+fi
+}
 
-
-
+function doViMetaListToCSV ()
+{
+for LINE in ${!CSVARRAY[@]}
+do
+  echo "${CSVARRAY[$LINE]}">>"$METADATANAME""_DoVIMeta.csv"
+done
+}
 # Revision history#
 
 
@@ -210,24 +221,136 @@ CMSHOTS=$(parseXML "count(//Shot)")
 echo "Number of metadatashot: $CMSHOTS".
 # CSV print of all shots (FRAMESTART;FRAME DURATION;FRAMEEND;TCIN;TCOUT;MinPQ;AvgPQ;MaxPQ;TID;...WIP
 IFS=$'\n'
+SHOTUUID=($(parseXML "//Shot/UniqueID/text()"))
 FRAMEINS=($(parseXML "//Shot/Record/In/text()"))
 FRAMEDURATIONS=($(parseXML "//Shot/Record/Duration/text()"))
 IMAGECHARACTERISTICS=($(parseXML "//Shot/PluginNode/DolbyEDR [@level="1"]/ImageCharacter/text()"))
+L2TID1=($(parseXML "//Shot/PluginNode/DolbyEDR [@level="2"] [TID=1]/Trim/text()"))
+# L2 param: L1minOffset,L1avgOffset,L&MaxOffset,Lift,Gain,Gamma,Saturation,Chroma,Tone Detail
 IFS="$OLDIFS"
 
-
-for SHOTN in "${!FRAMEINS[@]}"; do
+populateDoVIMetaList init
+for SHOTN in "${!SHOTUUID[@]}"; do
   ((FRAMEOUTS[$SHOTN]=${FRAMEINS[$SHOTN]}+${FRAMEDURATIONS[$SHOTN]}-1)) 
-  if [[ ${IMAGECHARACTERISTICS[$SHOTN]} =~ ([0-9.]*),([0-9.]*),([0-9.]*) ]]; then
-    MINPQ[$SHOTN]=${BASH_REMATCH[1]}
-    AVGPQ[$SHOTN]=${BASH_REMATCH[2]}
-    MAXPQ[$SHOTN]=${BASH_REMATCH[3]}
+  if [[ -z ${IMAGECHARACTERISTICS[$SHOTN]} ]]; then
+    L1Status[$SHOTN]="Not Defined"
+    MINPQ[$SHOTN]=""
+    AVGPQ[$SHOTN]=""
+    MAXPQ[$SHOTN]=""
+  else
+    if [[ ${IMAGECHARACTERISTICS[$SHOTN]} =~ ([0-9.]*),([0-9.]*),([0-9.]*) ]]; then
+      MINPQ[$SHOTN]=${BASH_REMATCH[1]}
+      AVGPQ[$SHOTN]=${BASH_REMATCH[2]}
+      MAXPQ[$SHOTN]=${BASH_REMATCH[3]}
+    fi
   fi
-  # MINPQ[$SHOTN]=$(echo ${IMAGECHARACTERISTICS[$SHOTN]} | sed 's/^\([0-9.]*\),[0-9.]*,[0-9.]*$/\1/')
-  # AVGPQ[$SHOTN]=$(echo ${IMAGECHARACTERISTICS[$SHOTN]} | sed 's/^[0-9.]*,\([0-9.]*\),[0-9.]*$/\1/')
-  # MAXPQ[$SHOTN]=$(echo ${IMAGECHARACTERISTICS[$SHOTN]} | sed 's/^[0-9.]*,[0-9.]*,\([0-9.]*\)$/\1/')
-  printf "in: %d out: %d duration: %d Lvl1-- min:%b avg:%b max:%b\n" "${FRAMEINS[$SHOTN]}" "${FRAMEOUTS[$SHOTN]}" "${FRAMEDURATIONS[$SHOTN]}" "${MINPQ[$SHOTN]}" "${AVGPQ[$SHOTN]}" "${MAXPQ[$SHOTN]}"
+  if [[ -z ${L2TID1[$SHOTN]} ]]; then
+    LE2TID1Status[$SHOTN]="Not Defined"
+    L2TIDl1minoffset[$SHOTN]=""
+    L2TIDl1avgoffset[$SHOTN]=""
+    L2TIDl1maxoffset[$SHOTN]=""
+    L2TIDlift[$SHOTN]=""
+    L2TIDgain[$SHOTN]=""
+    L2TIDgamma[$SHOTN]=""
+    L2TIDsaturation[$SHOTN]=""
+    L2TIDchroma[$SHOTN]=""
+    L2TIDToneDetail[$SHOTN]=""
+  else
+    if [[ ${L2TID1[$SHOTN]} =~ ([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*) ]]; then
+      L2TIDl1minoffset[$SHOTN]=${BASH_REMATCH[1]}
+      L2TIDl1avgoffset[$SHOTN]=${BASH_REMATCH[2]}
+      L2TIDl1maxoffset[$SHOTN]=${BASH_REMATCH[3]}
+      L2TIDlift[$SHOTN]=${BASH_REMATCH[4]}
+      L2TIDgain[$SHOTN]=${BASH_REMATCH[5]}
+      L2TIDgamma[$SHOTN]=${BASH_REMATCH[6]}
+      L2TIDsaturation[$SHOTN]=${BASH_REMATCH[7]}
+      L2TIDchroma[$SHOTN]=${BASH_REMATCH[8]}
+      L2TIDToneDetail[$SHOTN]=${BASH_REMATCH[9]}
+    fi
+  fi
+  # populateDoVIMetaList $SHOTN
+  # printf "Shot n:%d in:%d Lvl1-- min:%b avg:%b max:%b\n" "$SHOTN" "${FRAMEINS[$SHOTN]}" "${MINPQ[$SHOTN]}" "${AVGPQ[$SHOTN]}" "${MAXPQ[$SHOTN]}"
+  # printf "TID1 Trim shot n:%d in: %d %b(%b,%b,%b,%b,%b,%b,%b,%b,%b)\n" "$SHOTN" "${FRAMEINS[$SHOTN]}" "${LE2TID1Status[$SHOTN]}" "${L2TIDl1minoffset[$SHOTN]}" "${L2TIDl1avgoffset[$SHOTN]}" "${L2TIDl1maxoffset[$SHOTN]}" "${L2TIDlift[$SHOTN]}" "${L2TIDgain[$SHOTN]}" "${L2TIDgamma[$SHOTN]}" "${L2TIDsaturation[$SHOTN]}" "${L2TIDchroma[$SHOTN]}" "${L2TIDToneDetail[$SHOTN]}"
 done
+
+#------Xfade (<EditOffset>) parsing
+# Shot count where edit offset nodes exist
+XFADESHOTSCOUNT=$(parseXML "count(//Shot[Frame/EditOffset])")
+echo "There are $XFADESHOTSCOUNT shots where Dovi metadata per frame (of an existing fade editing) are applied"
+
+#Edit Offset. Level 1 and potential Level 2 Parsing
+IFS=$'\n'
+XFADESHOTUUID=($(parseXML "//Shot[Frame/EditOffset[last()]]/UniqueID/text()"))
+XFADESHOTFRAMEINS=($(parseXML "//Shot[Frame/EditOffset]/Record/In/text()"))
+# for index in ${!XFADESHOTFRAMEINS[@]}
+# do
+# echo "${XFADESHOTFRAMEINS[index]}"
+# done
+
+XFADEFRAMEENTRIES=($(parseXML "//Shot/Frame/EditOffset/text()"))
+XFADEIMAGECHARACTERISTICS=($(parseXML "//Shot/Frame/PluginNode/DolbyEDR [@level="1"]/ImageCharacter/text()"))
+XFADEL2TID1=($(parseXML "//Shot/Frame/PluginNode/DolbyEDR [@level="2"] [TID=1]/Trim/text()"))
+# L2 param: L1minOffset,L1avgOffset,L&MaxOffset,Lift,Gain,Gamma,Saturation,Chroma,Tone Detail
+IFS="$OLDIFS"
+
+#Pour chaque plan contenant des frame offset. et pour chaque valeur image de fade relative au plan.
+# Additionner la valeur de l'image d'entrée en question avec chaque valeur image de fade relative au plan
+((index=0))
+if [[ "(($index+1))" -le ${#XFADEFRAMEENTRIES[@]} ]]
+then 
+((XFADEFRAMEIN[$index]= $(parseXML "//Shot[Frame/EditOffset][$index]/Record/In/text()")+${XFADEFRAMEENTRIES[$index]}))
+echo "$(parseXML "//Shot[Frame/EditOffset][(($index+1))]/Record/In/text()") + ${XFADEFRAMEENTRIES[$index]} = ${XFADEFRAMEIN[$index]}"
+((index=$index+1))
+((position=$position+1))
+fi
+exit
+for XFADEFRAME in "${XFADEFRAMEINS[@]}"; do
+  if [[ -z ${XFADEIMAGECHARACTERISTICS[$XFADEFRAME]} ]]; then
+    L1Status[$XFADEFRAME]="Not Defined"
+    MINPQ[$XFADEFRAME]=""
+    AVGPQ[$XFADEFRAME]=""
+    MAXPQ[$XFADEFRAME]=""
+  else
+    if [[ ${XFADEIMAGECHARACTERISTICS[$XFADEFRAME]} =~ ([0-9.]*),([0-9.]*),([0-9.]*) ]]; then
+      FRAMENATURE="FadeEdit"
+      MINPQ[$XFADEFRAME]=${BASH_REMATCH[1]}
+      AVGPQ[$XFADEFRAME]=${BASH_REMATCH[2]}
+      MAXPQ[$XFADEFRAME]=${BASH_REMATCH[3]}
+    fi
+  fi
+  if [[ -z ${XFADEL2TID1[$XFADEFRAME]} ]]; then
+    LE2TID1Status[$XFADEFRAME]="Not Defined"
+    L2TIDl1minoffset[$XFADEFRAME]=""
+    L2TIDl1avgoffset[$XFADEFRAME]=""
+    L2TIDl1maxoffset[$XFADEFRAME]=""
+    L2TIDlift[$XFADEFRAME]=""
+    L2TIDgain[$XFADEFRAME]=""
+    L2TIDgamma[$XFADEFRAME]=""
+    L2TIDsaturation[$XFADEFRAME]=""
+    L2TIDchroma[$XFADEFRAME]=""
+    L2TIDToneDetail[$XFADEFRAME]=""
+  else
+    if [[ ${XFADEL2TID1[$XFADEFRAME]} =~ ([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*),([0-9.\-]*) ]]; then
+      L2TIDl1minoffset[$XFADEFRAME]=${BASH_REMATCH[1]}
+      L2TIDl1avgoffset[$XFADEFRAME]=${BASH_REMATCH[2]}
+      L2TIDl1maxoffset[$XFADEFRAME]=${BASH_REMATCH[3]}
+      L2TIDlift[$XFADEFRAME]=${BASH_REMATCH[4]}
+      L2TIDgain[$XFADEFRAME]=${BASH_REMATCH[5]}
+      L2TIDgamma[$XFADEFRAME]=${BASH_REMATCH[6]}
+      L2TIDsaturation[$XFADEFRAME]=${BASH_REMATCH[7]}
+      L2TIDchroma[$XFADEFRAME]=${BASH_REMATCH[8]}
+      L2TIDToneDetail[$XFADEFRAME]=${BASH_REMATCH[9]}
+    fi
+  fi
+  populateDoVIMetaList $XFADEFRAME
+  # printf "XFShot n: XFin:%d Lvl1-- min:%b avg:%b max:%b\n" "$XFADEFRAMEINS" "${MINPQ[$XFADEFRAME]}" "${AVGPQ[$XFADEFRAME]}" "${MAXPQ[$XFADEFRAME]}"
+  # printf "TID1 Trim shot n: XFin: %d %b(%b,%b,%b,%b,%b,%b,%b,%b,%b)\n" "$XFADEFRAME" "${FRAMEINS[$XFADEFRAME]}" "${LE2TID1Status[$XFADEFRAME]}" "${L2TIDl1minoffset[$XFADEFRAME]}" "${L2TIDl1avgoffset[$XFADEFRAME]}" "${L2TIDl1maxoffset[$XFADEFRAME]}" "${L2TIDlift[$XFADEFRAME]}" "${L2TIDgain[$XFADEFRAME]}" "${L2TIDgamma[$XFADEFRAME]}" "${L2TIDsaturation[$XFADEFRAME]}" "${L2TIDchroma[$XFADEFRAME]}" "${L2TIDToneDetail[$XFADEFRAME]}"
+
+done
+
+
+
+
 
 
 
@@ -241,8 +364,8 @@ done
 
 
 
- 
-
+ #Generate CSV based on $CSVARRAY
+doViMetaListToCSV
 ## Restoring IFS
 IFS="$OLDIFS"
 unset OLDIFS
