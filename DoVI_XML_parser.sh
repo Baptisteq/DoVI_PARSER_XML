@@ -398,6 +398,12 @@ done
 #--------------Analyse des plans-------------------------#
 #Defaut cohérence plans avec declaration générique#
 #MaxPQ -le Mastering Display max brightness: Lister les plans et Xframe si ce n'est pas le cas: CSV commentaire ISSUE MAX PQ overeach MD cap 
+#Lift positif: lister tous les plans, retourner les intervalles images pour une séquence entière.
+#Défaut cohérence L1 
+#min<avg<max problème de mesure
+#min=avg=max problème de mesure
+#Défaut cohérence L2 TID 1
+#L1offset(min,avg,max) !=0: vérifier
 [ "$MDMAXNIT" == "100" ] && CAPMAXPQ="5081"
 [ "$MDMAXNIT" == "1000" ] && CAPMAXPQ="7518"
 # [ $MDMAXNIT = 2000 ] && CAPMAXPQ=
@@ -405,9 +411,19 @@ done
 editReport "\nMAXPQ OVERREACH (PER SHOT)"
 for I in ${!MAXPQ[@]}
 do
+  MINPQPERSHOT=$(echo "scale=5;${MINPQ[I]}*10000" | bc)
+  MINPQPERSHOT=${MINPQPERSHOT%.*}
+  AVGPQPERSHOT=$(echo "scale=5;${AVGPQ[I]}*10000" | bc)
+  AVGPQPERSHOT=${AVGPQPERSHOT%.*}
   MAXPQPERSHOT=$(echo "scale=5;${MAXPQ[I]}*10000" | bc)
   MAXPQPERSHOT=${MAXPQPERSHOT%.*}
+  L2LIFTPERSHOT=$(echo "scale=5;${L2TIDlift[I]}*10000" | bc)
+  L2LIFTPERSHOT=${L2LIFTPERSHOT%.*}
   [[ $MAXPQPERSHOT -gt $CAPMAXPQ ]] && editReport "Maximum PQ ${MAXPQ[I]} for shot#$I FrameIn# ${FRAMEINS[I]} is above maximum brightness of the declared Master Display ($MDMAXNIT-nits)" && SHOTISSUES[$I]="MaxPQ above MasteringDisplay cap." && populateDoVIMetaList $I "Shot"
+  [[ $MINPQPERSHOT != "0" ]] && [[ $MINPQPERSHOT -lt $AVGPQPERSHOT ]] && [[ $AVGPQPERSHOT -lt $MAXPQPERSHOT ]] || editReport "for shot#$I FrameIn#. Non-coherent L1 min ($MINPQPERSHOT) avg ($AVGPQPERSHOT) max PQ ($MAXPQPERSHOT) values are set"&& SHOTISSUES[$I]="L1 value issue." && populateDoVIMetaList $I "Shot"
+  [[ $MINPQPERSHOT == "0" ]] && [[ $MINPQPERSHOT == $AVGPQPERSHOT ]] && [[ $AVGPQPERSHOT == $MAXPQPERSHOT ]] && editReport "for shot#$I FrameIn#. L1 min avg max PQ values are set at 0. Possible commercial black. It needs to be checked" && SHOTISSUES[$I]="L1 values=0." && populateDoVIMetaList $I "Shot"
+  [ "${LE2TID1Status[I]}" != "Not Defined" ] && [ "${L2TIDl1minoffset[I]}" != "0" ] || [ "${L2TIDl1avgoffset[I]}" != "0" ] || [ "${L2TIDl1maxoffset[I]}" != "0" ] && editReport "for shot#$I FrameIn#. L2 Trim (TID1) min avg max PQ offset values aren't set at 0. It needs to be checked" && SHOTISSUES[$I]="L2 Offset!=0." && populateDoVIMetaList $I "Shot"
+  [ "${LE2TID1Status[I]}" == "Not Defined" ] && [ "${L2LIFTPERSHOT[I]}" -gt "0" ] && editReport "for shot#$I FrameIn#. LE Trim (TID1) Lift value is set positive."  && SHOTISSUES[$I]="L2 TID Lift>0." && populateDoVIMetaList $I "Shot"
 done
 editReport "\nMAXPQ OVERREACH (PER FRAMEOFFSET)"
 for J in ${!XMAXPQ[@]}
@@ -416,7 +432,8 @@ do
   MAXPQPERXF=${MAXPQPERXF%.*}
   [[ $MAXPQPERXF -gt $CAPMAXPQ ]] && editReport "Maximum PQ of ${XMAXPQ[J]} for XFrameIn# ${XFADEFRAMEINS[J]} is above maximum brightness of the declared Master Display ($MDMAXNIT-nits)" && FRAMEISSUES[$J]="MaxPQ above MasteringDisplay cap." && populateDoVIMetaList $J "FrameOffset"
 done
-
+#[Shot Shot n+1] min=min n+1 & avg=avg n+1 & max=max n+1 : verifier pourquoi deux plans successifs ont exactement la même mesure L1.
+#FrameOut[Shotn] = (FrameIn(Shotn+1])-1
 #Défaut cohérence frame:
 editReport "\nFRAME OUT CROSSREACH"
 ((lastSHOT=$CMSHOTS-1))
@@ -424,24 +441,16 @@ for K in ${!SHOTUUID[@]}
 do
   if [ ${FRAMEOUTS[K]} -lt $lastSHOT ]; then
     [[ ${FRAMEOUTS[K]} -gt ${FRAMEINS[((K+1))]} ]] && editReport "Shot#$K's frame out (${FRAMEOUT[K]}) is reaching over the next shot's (#$K) frame in ${FRAMEINS[((K+1))]}." && SHOTISSUES[$K]="FrameOut/FrameIn overreach." && populateDoVIMetaList $K "Shot"
+    [ ${FRAMEDURATIONS[K]} = "1" ] && editReport "Shot#$K's duration is one frame. Shot needs to be checked"
+    [ "${MINPQ[K]}" == "${MINPQ((K+1))}" ] && [ "${AVGPQ[K]}" == "${AVGPQ((K+1))}" ] && [ "${MAXPQ[K]}" == "${MAXPQ((K+1))}" ] && editReport "Shot#$K's and its following frame share the same L1 values. Check for extraneous metadata shot or possible issues." && SHOTISSUES[$K]="L1 consecutives shots." && populateDoVIMetaList $K "Shot"
   fi
 done
-#FrameOut[Shotn] = (FrameIn(Shotn+1])-1
-# for I in ${!SHOTUUID[@]}
-#Duration>1 sinon checker plans d'une durée de une image
+
+
+
+
 #
-#
-#
-#
-#Défaut cohérence L1 
-#min<avg<max problème de mesure
-#min=avg=max problème de mesure
-#min=avg=max=0 problème de mesure ou image noir sur la source (checker pour chaque occurence)"
-#[Shot Shot n+1] min=min n+1 & avg=avg n+1 & max=max n+1 : verifier pourquoi deux plans successifs ont exactement la même mesure L1.
-#
-#Défaut cohérence L2 TID 1
-#L1offset(min,avg,max) !=0: vérifier
-#Lift positif: lister tous les plans, retourner les intervalles images pour une séquence entière.
+
 #[Shot Shot n+1] tonedetail != tonedetail n+1: tone detail ne doit pas changer entre différent plans
 #l2TID[*] ToneDetailTID[1] = ToneDetail[@]: Tone detail ne doit pas changer entre les différentes cible d'affichage
 #pour chaque plan si trim TID[*] existe trim TID[1] doit aussi exister
